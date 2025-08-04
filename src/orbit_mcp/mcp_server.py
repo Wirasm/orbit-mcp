@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Optional
 import aiohttp
 from fastmcp import FastMCP
 
+from .pack_manager import PackManager, COMPANY_PACK_TEMPLATES
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)
@@ -168,6 +170,88 @@ class DockerMCPManager:
                 "server_name": server_name,
                 "error": str(e),
                 "message": f"Error enabling {server_name}",
+            }
+
+    async def disable_server(self, server_name: str) -> Dict[str, Any]:
+        """Disable a specific MCP server"""
+        try:
+            # Check if server is currently enabled
+            enabled_servers = await self.list_enabled_servers()
+            server_names = [s["name"] for s in enabled_servers]
+            
+            if server_name not in server_names:
+                return {
+                    "success": False,
+                    "server_name": server_name,
+                    "message": f"Server '{server_name}' is not currently enabled",
+                    "enabled_servers": server_names,
+                }
+
+            result = await self._run_command(["docker", "mcp", "server", "disable", server_name])
+
+            if result.returncode == 0:
+                logger.info(f"✅ Disabled server: {server_name}")
+                return {
+                    "success": True,
+                    "server_name": server_name,
+                    "message": f"Successfully disabled {server_name}",
+                    "output": result.stdout.strip(),
+                }
+            else:
+                logger.warning(f"⚠️ Failed to disable {server_name}: {result.stderr}")
+                return {
+                    "success": False,
+                    "server_name": server_name,
+                    "error": result.stderr.strip(),
+                    "message": f"Failed to disable {server_name}",
+                }
+        except Exception as e:
+            logger.error(f"❌ Error disabling {server_name}: {str(e)}")
+            return {
+                "success": False,
+                "server_name": server_name,
+                "error": str(e),
+                "message": f"Error disabling {server_name}",
+            }
+
+    async def reset_all_servers(self) -> Dict[str, Any]:
+        """Disable all currently enabled MCP servers"""
+        try:
+            # Get currently enabled servers for reporting
+            enabled_servers = await self.list_enabled_servers()
+            server_count = len(enabled_servers)
+            
+            if server_count == 0:
+                return {
+                    "success": True,
+                    "message": "No servers are currently enabled",
+                    "servers_disabled": [],
+                }
+
+            result = await self._run_command(["docker", "mcp", "server", "reset"])
+
+            if result.returncode == 0:
+                disabled_servers = [s["name"] for s in enabled_servers]
+                logger.info(f"✅ Disabled all {server_count} servers: {', '.join(disabled_servers)}")
+                return {
+                    "success": True,
+                    "message": f"Successfully disabled all {server_count} servers",
+                    "servers_disabled": disabled_servers,
+                    "output": result.stdout.strip(),
+                }
+            else:
+                logger.warning(f"⚠️ Failed to reset servers: {result.stderr}")
+                return {
+                    "success": False,
+                    "error": result.stderr.strip(),
+                    "message": "Failed to disable all servers",
+                }
+        except Exception as e:
+            logger.error(f"❌ Error resetting servers: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "message": "Error disabling all servers",
             }
 
     async def list_oauth_providers(self) -> List[Dict[str, Any]]:
@@ -593,6 +677,9 @@ class DockerMCPManager:
 # Global Docker MCP manager
 docker_manager = DockerMCPManager()
 
+# Global Pack manager
+pack_manager = PackManager(docker_manager)
+
 
 @mcp.tool()
 async def hello_orbit(message: str = "Hello from Orbit-MCP!") -> str:
@@ -604,6 +691,7 @@ async def hello_orbit(message: str = "Hello from Orbit-MCP!") -> str:
     # Get basic stats
     enabled_servers = await docker_manager.list_enabled_servers() if docker_available else []
     available_tools = await docker_manager.list_available_tools() if docker_available else []
+    available_packs = await pack_manager.list_packs() if docker_available else []
 
     status_message = f"""🛰️ {message}
 
@@ -611,14 +699,19 @@ async def hello_orbit(message: str = "Hello from Orbit-MCP!") -> str:
 Docker MCP Gateway: {"✅ Available" if docker_available else "❌ Not Available"}
 Enabled Servers: {len(enabled_servers)}
 Available Tools: {len(available_tools)}
+Company Packs: {len(available_packs)}
 
 === ENABLED SERVERS ===
 {chr(10).join([f"• {s['name']} ({s['status']})" for s in enabled_servers]) if enabled_servers else "None"}
 
+=== AVAILABLE PACKS ===
+{chr(10).join([f"• {p['name']} - {p.get('description', 'No description')}" for p in available_packs]) if available_packs else "None (create with create_company_pack_template)"}
+
 === NEXT STEPS ===
-1. Use list_available_servers to see what you can enable
-2. Use enable_server to enable specific Docker MCP servers  
-3. Use list_enabled_tools to see available tools
+1. Use create_company_pack_template('frontend-stack') for quick setup
+2. Use install_pack to enable entire company toolchains  
+3. Use list_available_servers to see what you can enable individually
+4. Use enable_server to enable specific Docker MCP servers
 """.strip()
 
     return status_message
@@ -790,6 +883,44 @@ async def revoke_oauth(provider: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
+async def disable_server(server_name: str) -> Dict[str, Any]:
+    """Disable a specific Docker MCP server by name
+
+    Args:
+        server_name: Name of the server to disable (e.g., 'github', 'slack', 'notion')
+
+    Returns:
+        Dictionary with success status and server removal details
+    """
+
+    # Check Docker MCP availability first
+    if not await docker_manager.check_availability():
+        raise Exception("Docker MCP not available. Please install Docker MCP.")
+
+    result = await docker_manager.disable_server(server_name)
+    logger.info(f"Disable server '{server_name}' result: {result['success']}")
+    return result
+
+
+@mcp.tool()
+async def reset_all_servers() -> Dict[str, Any]:
+    """Disable all currently enabled MCP servers (company reset functionality)
+
+    Returns:
+        Dictionary with success status and list of disabled servers
+    """
+
+    # Check Docker MCP availability first
+    if not await docker_manager.check_availability():
+        raise Exception("Docker MCP not available. Please install Docker MCP.")
+
+    result = await docker_manager.reset_all_servers()
+    disabled_count = len(result.get("servers_disabled", []))
+    logger.info(f"Reset all servers result: {result['success']}, disabled {disabled_count} servers")
+    return result
+
+
+@mcp.tool()
 async def check_server_auth(server_name: str) -> Dict[str, Any]:
     """Check authentication requirements and status for a server
 
@@ -917,6 +1048,139 @@ async def list_enabled_tools() -> List[Dict[str, Any]]:
     tools = await docker_manager.list_available_tools()
     logger.info(f"Found {len(tools)} available tools")
     return tools
+
+
+# ===== PACK MANAGEMENT TOOLS =====
+
+@mcp.tool()
+async def create_pack(pack_name: str, description: str, servers: List[str], tags: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Create a new company/team pack with specific MCP servers
+
+    Args:
+        pack_name: Name of the pack (e.g., 'frontend-stack', 'acme-devops')
+        description: Human-readable description of the pack
+        servers: List of server names to include in the pack
+        tags: Optional tags for categorization
+
+    Returns:
+        Dictionary with success status and pack creation details
+    """
+
+    # Check Docker MCP availability first
+    if not await docker_manager.check_availability():
+        raise Exception("Docker MCP not available. Please install Docker MCP.")
+
+    result = await pack_manager.create_pack(pack_name, description, servers, tags)
+    logger.info(f"Create pack '{pack_name}' result: {result['success']}")
+    return result
+
+
+@mcp.tool()
+async def install_pack(pack_name: str, enable_oauth: bool = True) -> Dict[str, Any]:
+    """Install a pack by enabling all its servers
+
+    Args:
+        pack_name: Name of the pack to install (e.g., 'frontend-stack')
+        enable_oauth: Whether to prompt for OAuth authorization if needed
+
+    Returns:
+        Dictionary with installation results and any auth requirements
+    """
+
+    # Check Docker MCP availability first
+    if not await docker_manager.check_availability():
+        raise Exception("Docker MCP not available. Please install Docker MCP.")
+
+    result = await pack_manager.install_pack(pack_name, enable_oauth)
+    enabled_count = len(result.get("servers_enabled", []))
+    logger.info(f"Install pack '{pack_name}' result: {result['success']}, enabled {enabled_count} servers")
+    return result
+
+
+@mcp.tool()
+async def uninstall_pack(pack_name: str) -> Dict[str, Any]:
+    """Uninstall a pack by disabling all its servers
+
+    Args:
+        pack_name: Name of the pack to uninstall
+
+    Returns:
+        Dictionary with uninstallation results
+    """
+
+    # Check Docker MCP availability first
+    if not await docker_manager.check_availability():
+        raise Exception("Docker MCP not available. Please install Docker MCP.")
+
+    result = await pack_manager.uninstall_pack(pack_name)
+    disabled_count = len(result.get("servers_disabled", []))
+    logger.info(f"Uninstall pack '{pack_name}' result: {result['success']}, disabled {disabled_count} servers")
+    return result
+
+
+@mcp.tool()
+async def list_packs() -> List[Dict[str, Any]]:
+    """List all available company/team packs
+
+    Returns:
+        List of pack configurations with server details
+    """
+
+    packs = await pack_manager.list_packs()
+    logger.info(f"Found {len(packs)} available packs")
+    return packs
+
+
+@mcp.tool()
+async def get_pack_info(pack_name: str) -> Dict[str, Any]:
+    """Get detailed information about a specific pack
+
+    Args:
+        pack_name: Name of the pack to inspect
+
+    Returns:
+        Dictionary with pack information and server status
+    """
+
+    pack_info = await pack_manager.get_pack_info(pack_name)
+    logger.info(f"Pack info for '{pack_name}': found={pack_info.get('found', False)}")
+    return pack_info
+
+
+@mcp.tool()
+async def create_company_pack_template(template_name: str) -> Dict[str, Any]:
+    """Create a predefined company pack from templates
+
+    Args:
+        template_name: Name of the template ('frontend-stack', 'backend-stack', 'devops-stack', 'data-stack', 'productivity-stack')
+
+    Returns:
+        Dictionary with pack creation results
+    """
+
+    # Check Docker MCP availability first
+    if not await docker_manager.check_availability():
+        raise Exception("Docker MCP not available. Please install Docker MCP.")
+
+    if template_name not in COMPANY_PACK_TEMPLATES:
+        available_templates = list(COMPANY_PACK_TEMPLATES.keys())
+        return {
+            "success": False,
+            "template_name": template_name,
+            "error": f"Template '{template_name}' not found",
+            "available_templates": available_templates,
+        }
+
+    template = COMPANY_PACK_TEMPLATES[template_name]
+    result = await pack_manager.create_pack(
+        pack_name=template_name,
+        description=template["description"],
+        servers=template["servers"],
+        tags=template["tags"],
+    )
+
+    logger.info(f"Create company pack template '{template_name}' result: {result['success']}")
+    return result
 
 
 if __name__ == "__main__":
