@@ -1152,7 +1152,7 @@ async def create_company_pack_template(template_name: str) -> Dict[str, Any]:
     """Create a predefined company pack from templates
 
     Args:
-        template_name: Name of the template ('frontend-stack', 'backend-stack', 'devops-stack', 'data-stack', 'productivity-stack')
+        template_name: Name of the template ('frontend-stack', 'backend-stack', 'devops-stack', 'data-stack', 'productivity-stack', 'web-scraping-stack')
 
     Returns:
         Dictionary with pack creation results
@@ -1180,6 +1180,73 @@ async def create_company_pack_template(template_name: str) -> Dict[str, Any]:
     )
 
     logger.info(f"Create company pack template '{template_name}' result: {result['success']}")
+    return result
+
+
+@mcp.tool()
+async def update_pack(pack_name: str, description: Optional[str] = None, 
+                     servers: Optional[List[str]] = None, tags: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Update an existing pack with new configuration
+
+    Args:
+        pack_name: Name of the pack to update
+        description: New description (optional)
+        servers: New list of servers (optional)
+        tags: New list of tags (optional)
+
+    Returns:
+        Dictionary with success status and update details
+    """
+
+    # Check Docker MCP availability first
+    if not await docker_manager.check_availability():
+        raise Exception("Docker MCP not available. Please install Docker MCP.")
+
+    result = await pack_manager.update_pack(pack_name, description, servers, tags)
+    changes = len(result.get("changes", []))
+    logger.info(f"Update pack '{pack_name}' result: {result['success']}, made {changes} changes")
+    return result
+
+
+@mcp.tool()
+async def add_server_to_pack(pack_name: str, server_name: str) -> Dict[str, Any]:
+    """Add a server to an existing pack
+
+    Args:
+        pack_name: Name of the pack
+        server_name: Name of the server to add
+
+    Returns:
+        Dictionary with success status and operation details
+    """
+
+    # Check Docker MCP availability first
+    if not await docker_manager.check_availability():
+        raise Exception("Docker MCP not available. Please install Docker MCP.")
+
+    result = await pack_manager.add_server_to_pack(pack_name, server_name)
+    logger.info(f"Add server '{server_name}' to pack '{pack_name}' result: {result['success']}")
+    return result
+
+
+@mcp.tool()
+async def remove_server_from_pack(pack_name: str, server_name: str) -> Dict[str, Any]:
+    """Remove a server from an existing pack
+
+    Args:
+        pack_name: Name of the pack
+        server_name: Name of the server to remove
+
+    Returns:
+        Dictionary with success status and operation details
+    """
+
+    # Check Docker MCP availability first
+    if not await docker_manager.check_availability():
+        raise Exception("Docker MCP not available. Please install Docker MCP.")
+
+    result = await pack_manager.remove_server_from_pack(pack_name, server_name)
+    logger.info(f"Remove server '{server_name}' from pack '{pack_name}' result: {result['success']}")
     return result
 
 

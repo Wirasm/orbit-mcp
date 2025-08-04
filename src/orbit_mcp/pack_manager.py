@@ -355,37 +355,238 @@ class PackManager:
                 "error": str(e),
             }
 
+    async def update_pack(self, pack_name: str, description: Optional[str] = None, 
+                         servers: Optional[List[str]] = None, tags: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Update an existing pack with new configuration
+
+        Args:
+            pack_name: Name of the pack to update
+            description: New description (optional)
+            servers: New list of servers (optional)
+            tags: New list of tags (optional)
+
+        Returns:
+            Dictionary with success status and update details
+        """
+        try:
+            pack_file = self._get_pack_file_path(pack_name)
+            
+            if not os.path.exists(pack_file):
+                return {
+                    "success": False,
+                    "pack_name": pack_name,
+                    "error": f"Pack '{pack_name}' not found",
+                    "available_packs": [p["name"] for p in await self.list_packs()],
+                }
+
+            # Load existing pack configuration
+            with open(pack_file, "r") as f:
+                pack_config = yaml.safe_load(f)
+
+            # Validate new servers if provided
+            if servers is not None:
+                available_servers = await self.docker_manager.list_available_servers()
+                available_names = {s["name"] for s in available_servers}
+                
+                invalid_servers = [s for s in servers if s not in available_names]
+                if invalid_servers:
+                    return {
+                        "success": False,
+                        "pack_name": pack_name,
+                        "error": f"Invalid servers: {', '.join(invalid_servers)}",
+                        "invalid_servers": invalid_servers,
+                        "available_servers": sorted(list(available_names)),
+                    }
+
+            # Update pack configuration
+            if description is not None:
+                pack_config["description"] = description
+            if servers is not None:
+                pack_config["servers"] = servers
+            if tags is not None:
+                pack_config["tags"] = tags
+            
+            pack_config["updated_at"] = self._get_timestamp()
+
+            # Write updated pack file
+            with open(pack_file, "w") as f:
+                yaml.dump(pack_config, f, default_flow_style=False, sort_keys=False)
+
+            changes = []
+            if description is not None:
+                changes.append("description")
+            if servers is not None:
+                changes.append(f"servers ({len(servers)} servers)")
+            if tags is not None:
+                changes.append(f"tags ({len(tags)} tags)")
+
+            logger.info(f"✅ Updated pack '{pack_name}': {', '.join(changes)}")
+            return {
+                "success": True,
+                "pack_name": pack_name,
+                "message": f"Successfully updated pack '{pack_name}': {', '.join(changes)}",
+                "pack_config": pack_config,
+                "changes": changes,
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Error updating pack '{pack_name}': {str(e)}")
+            return {
+                "success": False,
+                "pack_name": pack_name,
+                "error": str(e),
+                "message": f"Error updating pack '{pack_name}'",
+            }
+
+    async def add_server_to_pack(self, pack_name: str, server_name: str) -> Dict[str, Any]:
+        """Add a server to an existing pack
+
+        Args:
+            pack_name: Name of the pack
+            server_name: Name of the server to add
+
+        Returns:
+            Dictionary with success status and operation details
+        """
+        try:
+            pack_info = await self.get_pack_info(pack_name)
+            if not pack_info.get("found"):
+                return {
+                    "success": False,
+                    "pack_name": pack_name,
+                    "error": f"Pack '{pack_name}' not found",
+                }
+
+            current_servers = pack_info.get("servers", [])
+            
+            if server_name in current_servers:
+                return {
+                    "success": False,
+                    "pack_name": pack_name,
+                    "server_name": server_name,
+                    "error": f"Server '{server_name}' is already in pack '{pack_name}'",
+                    "current_servers": current_servers,
+                }
+
+            # Validate server exists
+            available_servers = await self.docker_manager.list_available_servers()
+            available_names = {s["name"] for s in available_servers}
+            
+            if server_name not in available_names:
+                return {
+                    "success": False,
+                    "pack_name": pack_name,
+                    "server_name": server_name,
+                    "error": f"Server '{server_name}' not found in catalog",
+                    "available_servers": sorted(list(available_names)),
+                }
+
+            # Add server to pack
+            new_servers = current_servers + [server_name]
+            result = await self.update_pack(pack_name, servers=new_servers)
+            
+            if result.get("success"):
+                result["message"] = f"Added '{server_name}' to pack '{pack_name}'"
+                result["server_added"] = server_name
+                result["total_servers"] = len(new_servers)
+
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ Error adding server to pack '{pack_name}': {str(e)}")
+            return {
+                "success": False,
+                "pack_name": pack_name,
+                "server_name": server_name,
+                "error": str(e),
+            }
+
+    async def remove_server_from_pack(self, pack_name: str, server_name: str) -> Dict[str, Any]:
+        """Remove a server from an existing pack
+
+        Args:
+            pack_name: Name of the pack
+            server_name: Name of the server to remove
+
+        Returns:
+            Dictionary with success status and operation details
+        """
+        try:
+            pack_info = await self.get_pack_info(pack_name)
+            if not pack_info.get("found"):
+                return {
+                    "success": False,
+                    "pack_name": pack_name,
+                    "error": f"Pack '{pack_name}' not found",
+                }
+
+            current_servers = pack_info.get("servers", [])
+            
+            if server_name not in current_servers:
+                return {
+                    "success": False,
+                    "pack_name": pack_name,
+                    "server_name": server_name,
+                    "error": f"Server '{server_name}' is not in pack '{pack_name}'",
+                    "current_servers": current_servers,
+                }
+
+            # Remove server from pack
+            new_servers = [s for s in current_servers if s != server_name]
+            result = await self.update_pack(pack_name, servers=new_servers)
+            
+            if result.get("success"):
+                result["message"] = f"Removed '{server_name}' from pack '{pack_name}'"
+                result["server_removed"] = server_name
+                result["total_servers"] = len(new_servers)
+
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ Error removing server from pack '{pack_name}': {str(e)}")
+            return {
+                "success": False,
+                "pack_name": pack_name,
+                "server_name": server_name,
+                "error": str(e),
+            }
+
     def _get_timestamp(self) -> str:
         """Get current timestamp in ISO format"""
         from datetime import datetime
         return datetime.utcnow().isoformat() + "Z"
 
 
-# Predefined company pack templates
+# Predefined company pack templates  
 COMPANY_PACK_TEMPLATES = {
     "frontend-stack": {
         "description": "Frontend development tools and services",
-        "servers": ["github", "slack", "notion", "figma", "vercel"],
+        "servers": ["github", "notion", "filesystem", "brave"],
         "tags": ["frontend", "web", "ui", "development"],
     },
     "backend-stack": {
-        "description": "Backend development and infrastructure tools",
-        "servers": ["github", "docker", "aws", "postgres", "redis"],
+        "description": "Backend development and infrastructure tools", 
+        "servers": ["github", "docker", "postgresql", "fetch"],
         "tags": ["backend", "api", "database", "infrastructure"],
     },
     "devops-stack": {
         "description": "DevOps and infrastructure management tools",
-        "servers": ["github", "docker", "aws", "kubernetes", "terraform", "grafana"],
+        "servers": ["github", "docker", "kubernetes", "buildkite"],
         "tags": ["devops", "infrastructure", "monitoring", "deployment"],
     },
     "data-stack": {
         "description": "Data science and analytics tools",
-        "servers": ["github", "postgres", "bigquery", "jupyter", "dbt"],
+        "servers": ["github", "postgresql", "clickhouse", "jupyter"],
         "tags": ["data", "analytics", "ml", "database"],
     },
     "productivity-stack": {
-        "description": "Team productivity and communication tools",
-        "servers": ["slack", "notion", "calendar", "drive", "zoom"],
+        "description": "Team productivity and communication tools", 
+        "servers": ["notion", "atlassian", "filesystem", "time"],
         "tags": ["productivity", "communication", "collaboration"],
+    },
+    "web-scraping-stack": {
+        "description": "Web scraping and content analysis tools",
+        "servers": ["fetch", "brave", "firecrawl", "curl"],
+        "tags": ["scraping", "web", "content", "analysis"],
     },
 }
