@@ -427,95 +427,100 @@ class DockerMCPManager:
             return {"running": False, "error": str(e)}
 
     async def discover_tools_from_gateway(self) -> List[Dict[str, Any]]:
-        """Discover tools from the running Docker MCP Gateway"""
+        """Discover tools from enabled servers using Docker MCP CLI"""
         try:
-            if not self.gateway_running:
-                logger.warning("Gateway not running, cannot discover tools")
+            # Use CLI approach instead of HTTP - more reliable
+            result = await asyncio.wait_for(
+                self._run_command(["docker", "mcp", "tools", "list", "--format", "json"]),
+                timeout=15.0,  # Give it more time for CLI execution
+            )
+
+            if result.returncode == 0:
+                try:
+                    tools_data = json.loads(result.stdout)
+                    logger.info(f"Discovered {len(tools_data)} tools from Docker MCP CLI")
+                    return tools_data if isinstance(tools_data, list) else []
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse tools JSON: {str(e)}")
+                    # Fallback to text parsing if JSON fails
+                    lines = result.stdout.strip().split("\n")
+                    tools = []
+                    for line in lines:
+                        if line.strip() and not line.startswith("#"):
+                            parts = line.split(None, 1)  # Split on first whitespace
+                            if len(parts) >= 1:
+                                tools.append({
+                                    "name": parts[0],
+                                    "description": parts[1] if len(parts) > 1 else "",
+                                    "server": "unknown",
+                                })
+                    return tools
+            else:
+                logger.warning(f"Docker MCP tools list failed: {result.stderr}")
                 return []
 
-            # Make HTTP request to gateway to list tools
-            async with aiohttp.ClientSession() as session:
-                try:
-                    # Use MCP-style JSON-RPC request
-                    mcp_request = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
-
-                    async with session.post(
-                        f"http://localhost:{self.gateway_port}",
-                        json=mcp_request,
-                        timeout=aiohttp.ClientTimeout(total=10),
-                    ) as response:
-                        if response.status == 200:
-                            result = await response.json()
-                            if "result" in result and "tools" in result["result"]:
-                                tools = result["result"]["tools"]
-                                logger.info(f"Discovered {len(tools)} tools from gateway")
-                                return tools
-                            else:
-                                logger.warning(f"Unexpected gateway response format: {result}")
-                                return []
-                        else:
-                            logger.warning(f"Gateway returned status {response.status}")
-                            return []
-
-                except aiohttp.ClientError as e:
-                    logger.warning(f"HTTP request to gateway failed: {str(e)}")
-                    return []
-
+        except asyncio.TimeoutError:
+            logger.warning("Docker MCP tools list timed out")
+            return []
         except Exception as e:
-            logger.error(f"Error discovering tools from gateway: {str(e)}")
+            logger.error(f"Error discovering tools via CLI: {str(e)}")
             return []
 
     async def call_gateway_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Call a tool through the Docker MCP Gateway"""
+        """Call a tool through Docker MCP CLI"""
         try:
-            if not self.gateway_running:
-                return {
-                    "error": "Gateway not running",
-                    "message": "Docker MCP Gateway must be running to call tools",
-                }
+            # Build the docker mcp tools call command
+            cmd = ["docker", "mcp", "tools", "call", tool_name]
+            
+            # Add arguments in key=value format
+            if arguments:
+                import json
+                for key, value in arguments.items():
+                    if isinstance(value, str):
+                        cmd.append(f"{key}={value}")
+                    else:
+                        # For non-string values, convert to JSON
+                        cmd.append(f"{key}={json.dumps(value)}")
 
-            async with aiohttp.ClientSession() as session:
-                # Use MCP-style JSON-RPC request
-                mcp_request = {
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "tools/call",
-                    "params": {"name": tool_name, "arguments": arguments},
-                }
+            # Execute the tool call with timeout
+            result = await asyncio.wait_for(
+                self._run_command(cmd),
+                timeout=60.0,  # Longer timeout for tool execution
+            )
 
+            if result.returncode == 0:
+                # Tool executed successfully
                 try:
-                    async with session.post(
-                        f"http://localhost:{self.gateway_port}",
-                        json=mcp_request,
-                        timeout=aiohttp.ClientTimeout(
-                            total=30
-                        ),  # Longer timeout for tool execution
-                    ) as response:
-                        if response.status == 200:
-                            result = await response.json()
-                            if "result" in result:
-                                return {"success": True, "result": result["result"]}
-                            elif "error" in result:
-                                return {"success": False, "error": result["error"]}
-                            else:
-                                return {
-                                    "success": False,
-                                    "error": "Unexpected response format",
-                                    "raw_response": result,
-                                }
+                    # Try to parse output as JSON
+                    if result.stdout.strip():
+                        # Parse the JSON result that comes after timing info
+                        lines = result.stdout.strip().split('\n')
+                        json_lines = [line for line in lines if line.startswith('{') or line.startswith('[')]
+                        if json_lines:
+                            output_data = json.loads(json_lines[-1])  # Use the last JSON line
+                            return {"success": True, "result": output_data}
                         else:
-                            response_text = await response.text()
-                            return {
-                                "success": False,
-                                "error": f"HTTP {response.status}",
-                                "response": response_text,
-                            }
+                            return {"success": True, "result": {"output": result.stdout.strip()}}
+                    else:
+                        return {"success": True, "result": {"output": "Tool executed successfully"}}
+                except json.JSONDecodeError:
+                    # Return raw stdout if not JSON
+                    return {"success": True, "result": {"output": result.stdout.strip()}}
+            else:
+                # Tool execution failed
+                error_msg = result.stderr.strip() if result.stderr else "Tool execution failed"
+                logger.warning(f"Tool {tool_name} failed: {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "stdout": result.stdout.strip() if result.stdout else "",
+                }
 
-                except aiohttp.ClientError as e:
-                    return {"success": False, "error": f"Network error: {str(e)}"}
-
+        except asyncio.TimeoutError:
+            logger.warning(f"Tool {tool_name} execution timed out")
+            return {"success": False, "error": "Tool execution timed out"}
         except Exception as e:
-            logger.error(f"Error calling gateway tool {tool_name}: {str(e)}")
+            logger.error(f"Error calling tool {tool_name}: {str(e)}")
             return {"success": False, "error": str(e)}
 
     async def list_available_tools(self) -> List[Dict[str, Any]]:
@@ -859,7 +864,7 @@ async def gateway_status() -> Dict[str, Any]:
 
 @mcp.tool()
 async def discover_gateway_tools() -> List[Dict[str, Any]]:
-    """Discover tools available through the Docker MCP Gateway
+    """Discover tools available from enabled Docker MCP servers
 
     Returns:
         List of tool definitions from enabled servers
@@ -867,26 +872,17 @@ async def discover_gateway_tools() -> List[Dict[str, Any]]:
 
     # Check Docker MCP availability first
     if not await docker_manager.check_availability():
-        raise Exception("Docker MCP Gateway not available. Please install Docker MCP.")
+        raise Exception("Docker MCP not available. Please install Docker MCP.")
 
-    # Start gateway if not running
-    gateway_status_result = await docker_manager.gateway_status()
-    if not gateway_status_result.get("running", False):
-        logger.info("Gateway not running, starting it...")
-        start_result = await docker_manager.start_gateway()
-        if not start_result.get("success", False):
-            raise Exception(
-                f"Failed to start gateway: {start_result.get('error', 'Unknown error')}"
-            )
-
+    # Use CLI approach - no gateway needed for discovery
     tools = await docker_manager.discover_tools_from_gateway()
-    logger.info(f"Discovered {len(tools)} tools from gateway")
+    logger.info(f"Discovered {len(tools)} tools from enabled servers")
     return tools
 
 
 @mcp.tool()
 async def call_gateway_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """Call a tool through the Docker MCP Gateway
+    """Call a tool from enabled Docker MCP servers
 
     Args:
         tool_name: Name of the tool to call (e.g., 'create_issue', 'search_repositories')
@@ -898,20 +894,11 @@ async def call_gateway_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[s
 
     # Check Docker MCP availability first
     if not await docker_manager.check_availability():
-        raise Exception("Docker MCP Gateway not available. Please install Docker MCP.")
+        raise Exception("Docker MCP not available. Please install Docker MCP.")
 
-    # Ensure gateway is running
-    gateway_status_result = await docker_manager.gateway_status()
-    if not gateway_status_result.get("running", False):
-        logger.info("Gateway not running, starting it...")
-        start_result = await docker_manager.start_gateway()
-        if not start_result.get("success", False):
-            raise Exception(
-                f"Failed to start gateway: {start_result.get('error', 'Unknown error')}"
-            )
-
+    # Use CLI approach - direct tool execution
     result = await docker_manager.call_gateway_tool(tool_name, arguments)
-    logger.info(f"Gateway tool call '{tool_name}' result: {result.get('success', False)}")
+    logger.info(f"Tool call '{tool_name}' result: {result.get('success', False)}")
     return result
 
 
