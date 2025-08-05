@@ -1,1 +1,0 @@
-never directly add packages to pyproject.toml alway use uv add <package_name> or uv add -dev <package_name>

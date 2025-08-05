@@ -1,0 +1,37 @@
+name: oauth-demo
+description: OAuth demonstration pack showcasing GitHub and Google Drive integration
+version: 1.0.0
+created_at: "2025-08-04T14:35:00Z"
+updated_at: "2025-08-04T14:35:00Z"
+tags:
+  - demo
+  - oauth
+  - github
+  - gdrive
+servers:
+  - github
+  - gdrive  
+  - time
+company: demo
+status: available
+authentication:
+  github:
+    type: oauth
+    provider: github
+    required: true
+  gdrive:
+    type: oauth
+    provider: gdrive
+    required: true
+  time:
+    type: none
+    required: false
+description_long: |
+  This demonstration pack showcases OAuth capabilities with Docker MCP.
+  It includes:
+  - GitHub: Full repository management, issues, PRs with OAuth authentication
+  - Google Drive: File management and sharing with OAuth authentication  
+  - Time: Basic time utilities (no authentication required)
+  
+  This pack demonstrates the complete OAuth workflow from authorization
+  to tool execution with authenticated services.

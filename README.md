@@ -1,23 +1,23 @@
-# = Orbit-MCP: Meta-MCP Server for AI Toolchain Orchestration
+# üõ∞Ô∏è Orbit-MCP: Meta-MCP Server for AI Toolchain Orchestration
 
 > **"We build and maintain your AI-integrated developer toolchain, so your team can focus on shipping."**
 
-## <Ø Vision
+## üî≠ Vision
 
 Orbit-MCP is a **meta-orchestrator** that acts as a central control plane for managing all your AI-accessible developer tools. Instead of every team setting up and maintaining individual MCP servers, Orbit-MCP handles deployment, security, OAuth, permissions, and versioning through a unified interface.
 
 As AI agents become first-class developers, they need secure, structured access to tools your team already uses. Orbit-MCP makes it plug-and-play: a unified, secure, and observable layer between your company's infrastructure and any AI coding assistant.
 
-## =Ä Key Features
+## ‚ö° Key Features
 
-- **= Server Discovery**: Browse 147+ available MCP servers from Docker's catalog
-- **= OAuth-First Authentication**: Seamless OAuth flows for GitHub, Google Drive, and more
-- **° Dynamic Tool Aggregation**: Enable servers and instantly access their tools
-- **<õ Gateway Management**: Full lifecycle management of Docker MCP Gateway
-- **= Permission Control**: Team-based access control (coming soon)
-- **=  Audit Logging**: Track tool usage and access patterns (coming soon)
+- **üîç Server Discovery**: Browse 147+ available MCP servers from Docker's catalog
+- **üîê OAuth-First Authentication**: Seamless OAuth flows for GitHub, Google Drive, and more
+- **‚ö° Dynamic Tool Aggregation**: Enable servers and instantly access their tools
+- **üö™ Gateway Management**: Full lifecycle management of Docker MCP Gateway
+- **üë• Permission Control**: Team-based access control (coming soon)
+- **üìä Audit Logging**: Track tool usage and access patterns (coming soon)
 
-## =À Available Tools
+## üõ†Ô∏è Available Tools
 
 ### Core Management Tools (9 tools)
 - **`hello_orbit()`** - Test connectivity and show system status
@@ -41,32 +41,32 @@ As AI agents become first-class developers, they need secure, structured access 
 ### Legacy Tools
 - **`list_enabled_tools()`** - Show available tools (with helpful gateway guidance)
 
-## <¨ Demo Workflow
+## üöÄ Demo Workflow
 
 ### Scenario 1: GitHub Integration
 ```bash
 # 1. Check available servers
 list_available_servers()
-# í Shows 147+ servers including GitHub
+# ‚úÖ Shows 147+ servers including GitHub
 
 # 2. Try to enable GitHub
 enable_server("github")  
-# í "Authentication required. Use authorize_oauth('github')"
+# ‚ö†Ô∏è "Authentication required. Use authorize_oauth('github')"
 
 # 3. Complete OAuth flow
 authorize_oauth("github")
-# í Opens browser for GitHub OAuth consent
+# üåê Opens browser for GitHub OAuth consent
 
 # 4. Enable GitHub server
 enable_server("github")
-# í " Successfully enabled github (OAuth authenticated)"
+# ‚úÖ "Successfully enabled github (OAuth authenticated)"
 
 # 5. Start gateway and discover tools
 start_gateway()
-# í " Gateway started on port 3001"
+# ‚úÖ "Gateway started on port 3001"
 
 discover_gateway_tools()
-# í Lists: create_issue, search_repositories, create_pull_request, etc.
+# üìã Lists: create_issue, search_repositories, create_pull_request, etc.
 
 # 6. Use GitHub tools directly!
 call_gateway_tool("create_issue", {
@@ -74,7 +74,7 @@ call_gateway_tool("create_issue", {
   "body": "Created via Orbit-MCP meta-orchestrator!",
   "repository": "username/repo"
 })
-# í Creates actual GitHub issue! <â
+# ‚úÖ Creates actual GitHub issue! üéâ
 ```
 
 ### Scenario 2: Multi-Service Workflow
@@ -89,7 +89,7 @@ start_gateway()
 
 # Discover all available tools
 discover_gateway_tools()
-# í Shows tools from GitHub, Slack, Notion all in one place
+# üìã Shows tools from GitHub, Slack, Notion all in one place
 
 # Use tools from different services seamlessly
 call_gateway_tool("create_issue", {...})        # GitHub
@@ -97,7 +97,7 @@ call_gateway_tool("send_message", {...})        # Slack
 call_gateway_tool("create_page", {...})         # Notion
 ```
 
-## <◊ Architecture
+## üèóÔ∏è Architecture
 
 ```mermaid
 graph TD
@@ -117,7 +117,7 @@ graph TD
     H --> M[Other Providers]
 ```
 
-## =‡ Installation & Setup
+## üì¶ Installation & Setup
 
 ### Prerequisites
 - Docker Desktop with MCP plugin
@@ -127,7 +127,7 @@ graph TD
 ### Quick Start
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/Wirasm/orbit-mcp.git
 cd orbit-mcp
 
 # Install dependencies
@@ -145,8 +145,11 @@ Add to your Cline MCP settings (`~/.config/cline/mcp_settings.json`):
   "mcpServers": {
     "orbit-mcp": {
       "command": "uv",
-      "args": ["run", "orbit-mcp-server"],
-      "cwd": "/path/to/orbit-mcp",
+      "args": [
+        "run",
+        "orbit-mcp-server"
+      ],
+      "cwd": "/Path/to/orbit-mcp",
       "env": {
         "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
       }
@@ -155,7 +158,7 @@ Add to your Cline MCP settings (`~/.config/cline/mcp_settings.json`):
 }
 ```
 
-## <Ø Use Cases
+## üéØ Use Cases
 
 ### For Development Teams
 - **Unified Toolchain**: One interface to access GitHub, Jira, Slack, AWS, etc.
@@ -173,9 +176,9 @@ Add to your Cline MCP settings (`~/.config/cline/mcp_settings.json`):
 - **Monitoring Integration**: Connect to Grafana, DataDog, Sentry
 - **Deployment Pipelines**: Integrate with CI/CD tools like CircleCI, Buildkite
 
-## =. Future Roadmap
+## üó∫Ô∏è Future Roadmap
 
-### Phase 1: Core Platform 
+### Phase 1: Core Platform ‚úÖ
 - [x] Server discovery and management
 - [x] OAuth-first authentication  
 - [x] Dynamic tool aggregation
@@ -199,7 +202,7 @@ Add to your Cline MCP settings (`~/.config/cline/mcp_settings.json`):
 - [ ] Billing and usage monitoring
 - [ ] Marketplace for custom tools
 
-## <∆ Competitive Advantages
+## üèÜ Competitive Advantages
 
 - **Meta-Orchestrator Approach**: Manage the managers, not individual tools
 - **OAuth-First**: Professional authentication vs. hardcoded API keys
@@ -207,7 +210,7 @@ Add to your Cline MCP settings (`~/.config/cline/mcp_settings.json`):
 - **147+ Servers Available**: Massive catalog of pre-built integrations
 - **Single Configuration**: One MCP server to manage them all
 
-## > Contributing
+## ü§ù Contributing
 
 This is a hackathon project, but we welcome contributions! Key areas:
 
@@ -216,11 +219,11 @@ This is a hackathon project, but we welcome contributions! Key areas:
 - **UI/UX**: Web dashboard and visualization
 - **Documentation**: Usage examples and tutorials
 
-## =ƒ License
+## üìÑ License
 
 MIT License - see LICENSE file for details.
 
-## =O Acknowledgments
+## üôè Acknowledgments
 
 - Docker MCP team for the incredible gateway infrastructure
 - FastMCP for the Python MCP server framework
@@ -229,6 +232,6 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**Ready to orchestrate your AI toolchain?** =Ä
+**Ready to orchestrate your AI toolchain?** üöÄ
 
 Get started with `uv run orbit-mcp-server` and experience the future of AI-integrated development!
