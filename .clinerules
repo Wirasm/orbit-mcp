@@ -1,0 +1,109 @@
+# Cline Rules for Orbit-MCP Development
+
+## Project Context
+We are building Orbit-MCP, a meta-orchestrator for the MCP ecosystem that acts as a control plane for managing AI-accessible developer tools. This is an alpha-stage project focused on rapid iteration and feature delivery.
+
+## Core Development Principles
+
+### 1. Package Management
+- **ALWAYS** use `uv add <package>` or `uv add -dev <package>` to add dependencies
+- **NEVER** manually edit pyproject.toml for dependencies
+- Run `uv sync` after pulling changes to ensure dependencies are updated
+
+### 2. Code Philosophy
+- **No backwards compatibility** - remove deprecated code immediately
+- **Detailed errors over graceful failures** - we want to identify and fix issues fast
+- **Break things to improve them** - alpha is for rapid iteration
+- **Trust LLM intelligence** - avoid over-engineering, follow KISS principle
+- **Trust the prompt** - implement what's asked, nothing more, nothing less
+
+### 3. Error Handling
+- Let errors bubble up with full stack traces
+- Keep detailed error messages for all system components
+- Fail fast and loud - better than silent failures
+- Include context in error messages (which server, which tool, what parameters)
+
+### 4. File Management
+- **NEVER** create files unless absolutely necessary
+- **ALWAYS** prefer editing existing files over creating new ones
+- **NEVER** proactively create documentation files (*.md) or README files
+- Only create documentation if explicitly requested
+
+### 5. Testing & Development
+- Currently no test framework is configured - ask before assuming test commands
+- Use `uv run orbit-mcp-server` to run the MCP server locally
+- Gateway runs on port 3001 (not default 3000) to avoid conflicts
+- Check Docker MCP availability before attempting gateway operations
+
+## Architecture Guidelines
+
+### MCP Server Tools
+When implementing new tools in mcp_server.py:
+1. Follow the existing FastMCP decorator pattern
+2. Return structured Dict responses with clear success/error states
+3. Include descriptive messages for both success and failure cases
+4. Log operations at appropriate levels (INFO for success, WARNING/ERROR for issues)
+
+### OAuth Implementation
+- OAuth tokens stored in `~/.docker/mcp/oauth_tokens.json`
+- Always check authentication requirements before enabling servers
+- Handle OAuth callback flows through the built-in HTTP server
+- Support both GitHub and Google Drive OAuth providers
+
+### Pack Management
+- Packs are stored in `~/.docker/mcp/packs/*.yaml`
+- Use predefined templates in `COMPANY_PACK_TEMPLATES` as starting points
+- Validate server names against available servers before creating packs
+- Support both YAML and JSON formats for pack configurations
+
+### Gateway Integration
+- All tool execution goes through Docker MCP Gateway on localhost:3001
+- Use aiohttp for async HTTP calls to the gateway
+- Handle gateway lifecycle (start/stop/status) properly
+- Discover tools dynamically from enabled servers
+
+## Data Storage Locations
+- OAuth tokens: `~/.docker/mcp/oauth_tokens.json`
+- Server registry: `~/.docker/mcp/registry.yaml`
+- Pack configurations: `~/.docker/mcp/packs/*.yaml`
+- Company packs: Defined in `pack_manager.py` as `COMPANY_PACK_TEMPLATES`
+
+## Common Workflows
+
+### Adding a New Tool
+1. Add the tool function to `mcp_server.py` with `@mcp.tool()` decorator
+2. Follow existing naming conventions (snake_case, descriptive names)
+3. Return consistent response format: `{"success": bool, "message": str, ...}`
+4. Update tool categories in documentation if adding new category
+
+### Enabling a Server
+1. Check if server requires authentication with `check_server_auth()`
+2. If OAuth required, use `authorize_oauth()` first
+3. Enable server with `enable_server()`
+4. Start gateway if not running
+5. Discover tools with `discover_gateway_tools()`
+
+### Working with Packs
+1. Use `create_pack()` for custom collections
+2. Use `install_pack()` to enable all servers in a pack
+3. Check authentication requirements for all servers in pack
+4. Use `uninstall_pack()` to disable pack servers
+
+## Future Roadmap Awareness
+- Team/permission management is planned but not yet implemented
+- Enterprise features (RBAC, audit logging) are coming
+- OAuth Proxy for non-OAuth services (Notion, Slack) is in development
+- Web dashboard and usage analytics are planned
+
+## Debug Tips
+- Check `~/.docker/mcp/registry.yaml` directly for server state
+- Verify Docker MCP is installed: `docker mcp --help`
+- Gateway logs are available through standard Docker logging
+- Use `gateway_status()` to check if gateway is running
+- OAuth tokens can be manually inspected in `~/.docker/mcp/oauth_tokens.json`
+
+## Important Notes
+- This is a hackathon/alpha project - prioritize working features over perfect code
+- The Docker MCP CLI interface may change - be prepared to adapt parsing logic
+- Focus on the packs + OAuth + gateway experience as the core value prop
+- Remember: We're building for both individual developers and enterprise teams
