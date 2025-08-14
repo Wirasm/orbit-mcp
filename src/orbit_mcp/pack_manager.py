@@ -30,13 +30,15 @@ class PackManager:
         """Get the file path for a pack configuration"""
         return os.path.join(self.packs_dir, f"{pack_name}.yaml")
 
-    async def create_pack(self, pack_name: str, description: str, servers: List[str]) -> Dict[str, Any]:
+    async def create_pack(self, pack_name: str, description: str, servers: List[str], 
+                         tags: Optional[List[str]] = None) -> Dict[str, Any]:
         """Create a new server pack
 
         Args:
             pack_name: Name of the pack (e.g., 'frontend-stack', 'devops-tools')
             description: Human-readable description of the pack
             servers: List of server names to include in the pack
+            tags: Optional list of tags for categorization
 
         Returns:
             Dictionary with success status and pack details
@@ -76,6 +78,10 @@ class PackManager:
                 "updated_at": self._get_timestamp(),
                 "version": "1.0.0",
             }
+            
+            # Add tags if provided
+            if tags:
+                pack_config["tags"] = tags
 
             # Write pack file
             with open(pack_file, "w") as f:
@@ -353,13 +359,14 @@ class PackManager:
             }
 
     async def update_pack(self, pack_name: str, description: Optional[str] = None, 
-                         servers: Optional[List[str]] = None) -> Dict[str, Any]:
+                         servers: Optional[List[str]] = None, tags: Optional[List[str]] = None) -> Dict[str, Any]:
         """Update an existing pack with new configuration
 
         Args:
             pack_name: Name of the pack to update
             description: New description (optional)
             servers: New list of servers (optional)
+            tags: New list of tags (optional)
 
         Returns:
             Dictionary with success status and update details
@@ -399,6 +406,11 @@ class PackManager:
                 pack_config["description"] = description
             if servers is not None:
                 pack_config["servers"] = servers
+            if tags is not None:
+                if tags:  # If tags list is not empty
+                    pack_config["tags"] = tags
+                elif "tags" in pack_config:  # If tags is empty list, remove tags field
+                    del pack_config["tags"]
             
             pack_config["updated_at"] = self._get_timestamp()
 
@@ -411,6 +423,11 @@ class PackManager:
                 changes.append("description")
             if servers is not None:
                 changes.append(f"servers ({len(servers)} servers)")
+            if tags is not None:
+                if tags:
+                    changes.append(f"tags ({len(tags)} tags)")
+                else:
+                    changes.append("tags (removed)")
 
             logger.info(f"✅ Updated pack '{pack_name}': {', '.join(changes)}")
             return {

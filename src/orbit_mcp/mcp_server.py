@@ -1066,13 +1066,15 @@ async def list_enabled_tools() -> List[Dict[str, Any]]:
 # ===== PACK MANAGEMENT TOOLS =====
 
 @mcp.tool()
-async def create_pack(pack_name: str, description: str, servers: List[str]) -> Dict[str, Any]:
+async def create_pack(pack_name: str, description: str, servers: List[str], 
+                     tags: Optional[List[str]] = None) -> Dict[str, Any]:
     """Create a new company/team pack with specific MCP servers
 
     Args:
         pack_name: Name of the pack (e.g., 'frontend-stack', 'acme-devops')
         description: Human-readable description of the pack
         servers: List of server names to include in the pack
+        tags: Optional list of tags for categorization (e.g., ['frontend', 'development'])
 
     Returns:
         Dictionary with success status and pack creation details
@@ -1082,7 +1084,7 @@ async def create_pack(pack_name: str, description: str, servers: List[str]) -> D
     if not await docker_manager.check_availability():
         raise Exception("Docker MCP not available. Please install Docker MCP.")
 
-    result = await pack_manager.create_pack(pack_name, description, servers)
+    result = await pack_manager.create_pack(pack_name, description, servers, tags)
     logger.info(f"Create pack '{pack_name}' result: {result['success']}")
     return result
 
@@ -1197,13 +1199,14 @@ async def create_company_pack_template(template_name: str) -> Dict[str, Any]:
 
 @mcp.tool()
 async def update_pack(pack_name: str, description: Optional[str] = None, 
-                     servers: Optional[List[str]] = None) -> Dict[str, Any]:
+                     servers: Optional[List[str]] = None, tags: Optional[List[str]] = None) -> Dict[str, Any]:
     """Update an existing pack with new configuration
 
     Args:
         pack_name: Name of the pack to update
         description: New description (optional)
         servers: New list of servers (optional)
+        tags: New list of tags (optional)
 
     Returns:
         Dictionary with success status and update details
@@ -1213,7 +1216,7 @@ async def update_pack(pack_name: str, description: Optional[str] = None,
     if not await docker_manager.check_availability():
         raise Exception("Docker MCP not available. Please install Docker MCP.")
 
-    result = await pack_manager.update_pack(pack_name, description, servers)
+    result = await pack_manager.update_pack(pack_name, description, servers, tags)
     changes = len(result.get("changes", []))
     logger.info(f"Update pack '{pack_name}' result: {result['success']}, made {changes} changes")
     return result
