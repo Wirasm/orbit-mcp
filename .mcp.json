@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "orbit-mcp": {
+      "command": "/Users/rasmus/Projects/cline-hack/orbit-mcp/.venv/bin/orbit-mcp-server"
+    }
+  }
+}

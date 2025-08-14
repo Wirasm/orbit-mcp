@@ -137,8 +137,33 @@ uv sync
 uv run orbit-mcp-server
 ```
 
+### Configure with Claude Code
+Add Orbit-MCP to your Claude Code instance:
+
+```bash
+# From any directory, run:
+claude mcp add orbit-mcp /path/to/orbit-mcp/.venv/bin/orbit-mcp-server
+
+# For example:
+claude mcp add orbit-mcp /Users/rasmus/Projects/cline-hack/orbit-mcp/.venv/bin/orbit-mcp-server
+```
+
+This will add Orbit-MCP to your current Claude Code project. The server will appear in the MCP servers list and connect automatically.
+
 ### Configure with Cline
-Add to your Cline MCP settings (`~/.config/cline/mcp_settings.json`):
+Add to your project's `.mcp.json` file (in the project root):
+
+```json
+{
+  "mcpServers": {
+    "orbit-mcp": {
+      "command": "/path/to/orbit-mcp/.venv/bin/orbit-mcp-server"
+    }
+  }
+}
+```
+
+Or with uv:
 
 ```json
 {
@@ -149,7 +174,7 @@ Add to your Cline MCP settings (`~/.config/cline/mcp_settings.json`):
         "run",
         "orbit-mcp-server"
       ],
-      "cwd": "/Path/to/orbit-mcp",
+      "cwd": "/path/to/orbit-mcp",
       "env": {
         "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
       }
