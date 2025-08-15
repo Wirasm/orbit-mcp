@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import signal
+import socket
 import subprocess
 import time
 from typing import Any, Dict, List, Optional
@@ -29,8 +30,16 @@ class DockerMCPManager:
 
     def __init__(self):
         self.gateway_process: Optional[asyncio.subprocess.Process] = None
-        self.gateway_port = 3001  # Use a different port than default
+        self.gateway_port = None  # Will be dynamically allocated
         self.gateway_running = False
+    
+    def _find_free_port(self) -> int:
+        """Find a free port to bind the gateway to"""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('', 0))
+            s.listen(1)
+            port = s.getsockname()[1]
+        return port
 
     async def _run_command(self, cmd: List[str]) -> subprocess.CompletedProcess:
         """Run a docker mcp command"""
@@ -407,43 +416,67 @@ class DockerMCPManager:
                     "endpoint": f"http://localhost:{self.gateway_port}",
                 }
 
-            # Start gateway with HTTP transport
-            cmd = [
-                "docker",
-                "mcp",
-                "gateway",
-                "run",
-                "--transport=streaming",
-                f"--port={self.gateway_port}",
-                "--block-secrets=false",  # Allow secrets for OAuth
-            ]
+            # Find a free port dynamically
+            max_retries = 5
+            for retry in range(max_retries):
+                self.gateway_port = self._find_free_port()
+                
+                # Start gateway with HTTP transport
+                cmd = [
+                    "docker",
+                    "mcp",
+                    "gateway",
+                    "run",
+                    "--transport=streaming",
+                    f"--port={self.gateway_port}",
+                    "--block-secrets=false",  # Allow secrets for OAuth
+                ]
 
-            logger.info(f"Starting Docker MCP Gateway on port {self.gateway_port}...")
-            self.gateway_process = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
+                logger.info(f"Starting Docker MCP Gateway on port {self.gateway_port} (attempt {retry + 1}/{max_retries})...")
+                self.gateway_process = await asyncio.create_subprocess_exec(
+                    *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                )
 
-            # Wait a moment for gateway to start
-            await asyncio.sleep(2)
+                # Wait a moment for gateway to start
+                await asyncio.sleep(2)
 
-            # Check if process is still running
-            if self.gateway_process.returncode is None:
-                self.gateway_running = True
-                logger.info(f"✅ Gateway started successfully on port {self.gateway_port}")
-                return {
-                    "success": True,
-                    "message": f"Gateway started on port {self.gateway_port}",
-                    "port": self.gateway_port,
-                    "endpoint": f"http://localhost:{self.gateway_port}",
-                    "pid": self.gateway_process.pid,
-                }
-            else:
-                stdout, stderr = await self.gateway_process.communicate()
-                return {
-                    "success": False,
-                    "error": stderr.decode() if stderr else "Gateway failed to start",
-                    "stdout": stdout.decode() if stdout else "",
-                }
+                # Check if process is still running
+                if self.gateway_process.returncode is None:
+                    self.gateway_running = True
+                    logger.info(f"✅ Gateway started successfully on port {self.gateway_port}")
+                    return {
+                        "success": True,
+                        "message": f"Gateway started on port {self.gateway_port}",
+                        "port": self.gateway_port,
+                        "endpoint": f"http://localhost:{self.gateway_port}",
+                        "pid": self.gateway_process.pid,
+                    }
+                else:
+                    # Process failed to start
+                    stdout, stderr = await self.gateway_process.communicate()
+                    error_msg = stderr.decode() if stderr else "Gateway failed to start"
+                    
+                    # Check if it's a port binding error
+                    if "bind: address already in use" in error_msg:
+                        logger.warning(f"Port {self.gateway_port} already in use, retrying...")
+                        self.gateway_process = None
+                        # Small delay before next retry
+                        await asyncio.sleep(0.5)
+                        continue  # Try next iteration with a new port
+                    else:
+                        # Some other error, fail immediately
+                        return {
+                            "success": False,
+                            "error": error_msg,
+                            "stdout": stdout.decode() if stdout else "",
+                        }
+            
+            # If we exhausted all retries
+            return {
+                "success": False,
+                "error": "Failed to find available port after multiple attempts",
+                "message": "Could not start Docker MCP Gateway",
+            }
 
         except Exception as e:
             logger.error(f"Error starting gateway: {str(e)}")
@@ -472,6 +505,7 @@ class DockerMCPManager:
 
             self.gateway_running = False
             self.gateway_process = None
+            self.gateway_port = None  # Reset port when stopping
 
             logger.info("✅ Gateway stopped successfully")
             return {"success": True, "message": "Gateway stopped successfully"}
